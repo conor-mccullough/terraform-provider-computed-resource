@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"log"
 	"regexp"
 	"sort"
@@ -719,6 +720,20 @@ func databaseSecretBackendConnectionResource() *schema.Resource {
 	}
 }
 
+// https://pkg.go.dev/github.com/abergmeier/terraform-provider-exasol/pkg/computed
+// resource_pki_secret_backend_intermediate_set_signed.go - has
+// computed values predefined -   	computedIssuerFields := []string{consts.FieldImportedIssuers, consts.FieldImportedKeys}
+
+/*			consts.FieldImportedIssuers: {
+			Type: schema.TypeList,
+			Elem: &schema.Schema{
+				Type: schema.TypeString,
+			},
+			Computed:    true,
+			Description: "The imported issuers.",
+			ForceNew:    true,
+		},*/
+
 func connectionStringResource(config *connectionStringConfig) *schema.Resource {
 	res := &schema.Resource{
 		Schema: map[string]*schema.Schema{
@@ -727,18 +742,18 @@ func connectionStringResource(config *connectionStringConfig) *schema.Resource {
 				Optional:    true,
 				Description: "Connection string to use to connect to the database.",
 			},
-			"max_open_connections": {
+			consts.FieldMaxOpenConnections: {
 				Type:        schema.TypeInt,
 				Optional:    true,
 				Description: "Maximum number of open connections to the database.",
 				Default:     2,
 			},
-			"max_idle_connections": {
+			consts.FieldMaxIdleConnections: {
 				Type:        schema.TypeInt,
 				Optional:    true,
 				Description: "Maximum number of idle connections to the database.",
 			},
-			"max_connection_lifetime": {
+			consts.FieldMaxConnectionLifetime: {
 				Type:        schema.TypeInt,
 				Optional:    true,
 				Description: "Maximum number of seconds a connection may be reused.",
@@ -1022,6 +1037,8 @@ func getConnectionDetailsFromResponse(d *schema.ResourceData, prefix string, res
 			result["connection_url"] = v.(string)
 		}
 	}
+	//computedConnectionFields := []string{consts.FieldMaxOpenConnections, consts.FieldMaxIdleConnections, consts.FieldMaxConnectionLifetime}
+
 	if v, ok := data["max_open_connections"]; ok {
 		n, err := v.(json.Number).Int64()
 		if err != nil {
@@ -1436,9 +1453,27 @@ func getOracleConnectionDetailsFromResponse(d *schema.ResourceData, prefix strin
 	return result
 }
 
-func setDatabaseConnectionData(d *schema.ResourceData, prefix string, data map[string]interface{}) {
+func setDatabaseConnectionData(d *schema.ResourceData, prefix string, data map[string]interface{}) diag.Diagnostics {
 	if v, ok := d.GetOk(prefix + "connection_url"); ok {
 		data["connection_url"] = v.(string)
+	}
+	data := map[string]interface{}{
+		consts.FieldMaxOpenConnections: d.Get(consts.FieldMaxOpenConnections).(string),
+	}
+	computedConnectionFields := []string{consts.FieldMaxOpenConnections, consts.FieldMaxIdleConnections, consts.FieldMaxConnectionLifetime}
+
+	for _, k := range computedConnectionFields {
+		if v == nil {
+			if err := d.Set(k, nil); err != nil {
+				return diag.FromErr(err)
+			}
+		} else {
+			if v, ok := v.Data[k]; ok {
+				if err := d.Set(k, v); err != nil {
+					return diag.FromErr(err)
+				}
+			}
+		}
 	}
 	if v, ok := d.GetOk(prefix + "max_open_connections"); ok {
 		data["max_open_connections"] = v.(int)
